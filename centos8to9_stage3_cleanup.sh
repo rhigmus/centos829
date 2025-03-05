@@ -1,30 +1,40 @@
 #!/bin/bash
+set -e
 
-set -e  # Exit immediately if a command fails
+LOGFILE="/var/log/centos8to9-upgrade.log"
 
-echo -e "\n\e[1;34m[Stage 3] Performing post-upgrade cleanup and verification...\e[0m\n"
+log_msg() {
+    local TIMESTAMP
+    TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+    echo -e "$TIMESTAMP - $1" | tee -a "$LOGFILE"
+}
 
-# Verify CentOS version
-echo -e "\n\e[1;33mVerifying CentOS Stream release version...\e[0m"
-cat /etc/centos-release
+run_cmd() {
+    local CMD="$1"
+    log_msg "Executing: $CMD"
+    eval "$CMD" >>"$LOGFILE" 2>&1
+    local EXIT_CODE=$?
+    if [[ $EXIT_CODE -ne 0 ]]; then
+        log_msg "❌ ERROR: Command failed with exit code $EXIT_CODE"
+    else
+        log_msg "✅ SUCCESS: Command completed successfully"
+    fi
+}
 
-# Check the current kernel version
-echo -e "\n\e[1;33mChecking kernel version...\e[0m"
-uname -r
+log_msg "[Stage 3] Performing post-upgrade cleanup and verification..."
 
-# Set latest kernel as default
-echo -e "\n\e[1;33mSetting latest kernel as default...\e[0m"
-latest_kernel=$(sudo grubby --info=ALL | grep -E '^kernel=' | head -n 1 | cut -d= -f2)
-sudo grubby --set-default="$latest_kernel"
+run_cmd "cat /etc/centos-release"
 
-# Regenerate GRUB configuration
-echo -e "\n\e[1;33mRegenerating GRUB configuration...\e[0m"
-sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+run_cmd "uname -r"
 
-# Remove old kernels
-echo -e "\n\e[1;33mRemoving old kernels...\e[0m"
-sudo dnf remove -y $(dnf repoquery --installonly --latest-limit=-1 -q)
+log_msg "Checking latest kernel..."
+latest_kernel=$(grubby --info=ALL | grep -E '^kernel=' | head -n 1 | cut -d= -f2)
+run_cmd "grubby --set-default='$latest_kernel'"
 
-echo -e "\n\e[1;32mUpgrade to CentOS 9 Stream completed successfully!\e[0m\n"
+run_cmd "grub2-mkconfig -o /boot/grub2/grub.cfg"
+
+run_cmd "dnf remove -y $(dnf repoquery --installonly --latest-limit=-1 -q)"
+
+log_msg "🎉 Upgrade to CentOS 9 Stream completed successfully!"
 
 #EOF
